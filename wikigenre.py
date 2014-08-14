@@ -1,27 +1,26 @@
-import logging
 import codecs
+import logging
+from glob import iglob
+from os.path import join, dirname
 
 from gevent import monkey
+from gevent.event import AsyncResult
 from gevent.pool import Pool
 monkey.patch_socket()
 monkey.patch_ssl()
 
 import requests
-from wikiapi import WikiApi
-from mutagen import easyid3, flac, easymp4, oggvorbis, musepack
 from lxml import html
-
-import albums
+from mutagen import easyid3, flac, easymp4, oggvorbis, musepack
+from wikiapi import WikiApi
 
 
 logger = logging.getLogger(__name__)
-pool = Pool(8)
 
-uri_scheme = 'http'
-api_uri = 'wikipedia.org/w/api.php'
-article_uri = 'wikipedia.org/wiki/'
-
-PATH = 'm:\\music'
+NOT_FOUND = object()
+URI_SCHEME = 'http'
+ARTICLE_URI = 'wikipedia.org/wiki/'
+GENRE_CACHE = {}  # {(album, artist): AsyncResult([genre1, genre2, ...])}
 
 
 class SetFile(set):
@@ -60,7 +59,7 @@ def get_genres(query):
     if results:
         try:
             url = '{0}://{1}.{2}{3}'.format(
-                uri_scheme, wiki.options['locale'], article_uri,
+                URI_SCHEME, wiki.options['locale'], ARTICLE_URI,
                 results[0].encode('utf-8'))
             resp = requests.get(url)
             dom = html.fromstring(resp.content)
@@ -94,63 +93,65 @@ def search_variants(artist, album):
 
 
 def albumgenres(artist='', album=''):
-    return reduce(lambda a, b: a or b, search_variants(artist, album))
+    result = GENRE_CACHE.get((artist, album))
+    if result is None:
+        result = AsyncResult()
+        GENRE_CACHE[(artist, album)] = result
+        result.set(reduce(lambda a, b: a or b, search_variants(artist, album)))
+    return result.get()
 
 
 def load_track(track):
-    if track.lower().endswith('.mp3'):
+    track_lower = track.lower()
+    if track_lower.endswith('.mp3'):
         return easyid3.EasyID3(track)
-    elif track.lower().endswith('.flac'):
+    elif track_lower.endswith('.flac'):
         return flac.FLAC(track)
-    elif track.lower().endswith('.mp4') or track.lower().endswith('.m4a'):
+    elif track_lower.endswith('.mp4') or track_lower.endswith('.m4a'):
         return easymp4.EasyMP4(track)
-    elif track.lower().endswith('.ogg'):
+    elif track_lower.endswith('.ogg'):
         return oggvorbis.OggVorbis(track)
-    elif track.lower().endswith('.mpc'):
+    elif track_lower.endswith('.mpc'):
         return musepack.Musepack(track)
     else:
         raise ValueError("unhandled format '%s'" % track)
 
 
-def update_genre(track, genres):
-    values = map(titlecase, genres)
-    audio = load_track(track)
-    audio['genre'] = values
-    audio.save()
-
-
-def has_genre(track):
-    audio = load_track(track)
-    return bool(audio.get('genre'))
-
-
-def wikigenre(item):
-    artist = item['artist']
-    album = item['album'].split(None, 1)[-1]
-    tracks = item['tracks']()
+def wikigenre(track, force=False):
     try:
-        if has_genre(tracks[-1]):
-            logger.info('Skipping %s', item['path'])
-            return
-        genres = albumgenres(artist, album)
-        if genres:
-            for track in tracks:
-                update_genre(track, genres)
-            logger.info('Tagged %s', item['path'])
+        audio = load_track(track)
+        audio_genre = audio.get('genre')
+        if audio_genre is not None and not force:
+            logger.info('Skipping %s', track)
         else:
-            logger.warn('No genres found for %s', item['path'])
+            artist = audio.get('artist', [None])[0]
+            album = audio.get('album', [None])[0]
+            genres = map(titlecase, albumgenres(artist, album))
+            if genres:
+                audio['genre'] = genres
+                audio.save()
+                logger.info('Tagged %s', track)
+            else:
+                logger.warn('No genres found for %s', track)
     except Exception as e:
-        logger.error('Error tagging %s: %s', item['path'], repr(e))
+        logger.error('Error tagging %s: %s', track, repr(e))
         raise
 
 
-def main(string=''):
-    with open('wikigenre.log', 'a') as log:
-        handler = logging.StreamHandler(log)
+def main(string='', path=None, force=False):
+    with open(join(dirname(__file__), 'wikigenre.log'), 'a') as log:
+        handler = logging.StreamHandler()
+        filehandler = logging.StreamHandler(log)
+
         formatter = logging.Formatter('%(asctime)s;%(levelname)s;%(message)s')
+
         handler.setFormatter(formatter)
+        filehandler.setFormatter(formatter)
+
         logger.addHandler(handler)
-        logger.setLevel('INFO')
+        logger.addHandler(filehandler)
+
+        logger.setLevel('DEBUG')
 
         if string:
             for artistalbum in string.split('; '):
@@ -163,8 +164,9 @@ def main(string=''):
                        '; '.join(map(titlecase, albumgenres(artist, album))))
         else:
             logger.info('Starting')
-            for item in albums.albums(PATH):
-                pool.spawn(wikigenre, item)
+            pool = Pool(8)
+            for track in iglob(path):
+                pool.spawn(wikigenre, track, force=force)
             pool.join()
             logger.info('Finished')
 
@@ -173,8 +175,10 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('string', metavar='STRING', nargs='?', default='',
+    parser.add_argument('path', metavar='PATH', nargs='?')
+    parser.add_argument('--string', metavar='STRING', nargs='?', default='',
                         help='[artist - ]album(; [artist - ]album)*')
+    parser.add_argument('-f', '--force', action='store_true')
     namespace = parser.parse_args()
     kwargs = dict(namespace._get_kwargs())
 
