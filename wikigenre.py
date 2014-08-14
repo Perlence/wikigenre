@@ -1,7 +1,7 @@
 import codecs
 import logging
 from glob import iglob
-from os.path import join, dirname
+from os.path import join, dirname, normpath
 
 from gevent import monkey
 from gevent.event import AsyncResult
@@ -17,7 +17,6 @@ from wikiapi import WikiApi
 
 logger = logging.getLogger(__name__)
 
-NOT_FOUND = object()
 URI_SCHEME = 'http'
 ARTICLE_URI = 'wikipedia.org/wiki/'
 GENRE_CACHE = {}  # {(album, artist): AsyncResult([genre1, genre2, ...])}
@@ -118,6 +117,7 @@ def load_track(track):
 
 
 def wikigenre(track, force=False):
+    track = normpath(track)
     try:
         audio = load_track(track)
         audio_genre = audio.get('genre')
