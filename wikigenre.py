@@ -5,8 +5,8 @@ from glob import iglob
 from os.path import join, dirname, normpath
 
 from gevent import monkey
+from gevent import spawn, joinall
 from gevent.event import AsyncResult
-from gevent.pool import Pool
 monkey.patch_socket()
 monkey.patch_ssl()
 
@@ -21,32 +21,6 @@ logger = logging.getLogger(__name__)
 URI_SCHEME = 'http'
 ARTICLE_URI = 'wikipedia.org/wiki/'
 GENRE_CACHE = {}  # {(album, artist): AsyncResult([genre1, genre2, ...])}
-
-
-class SetFile(set):
-    def __init__(self, filename):
-        try:
-            with codecs.open(filename, 'r', encoding='utf-8') as fp:
-                lines = fp.read().splitlines()
-        except IOError:
-            lines = []
-        super(SetFile, self).__init__(lines)
-        self.fp = codecs.open(filename, 'a', encoding='utf-8')
-
-    def add(self, value):
-        super(SetFile, self).add(value)
-        self.fp.write(value)
-        self.fp.write(u'\n')
-        self.fp.flush()
-
-    def close(self):
-        self.fp.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc_info):
-        return self.fp.__exit__(*exc_info)
 
 
 def titlecase(string):
@@ -95,8 +69,7 @@ def search_variants(artist, album):
 def albumgenres(artist='', album=''):
     result = GENRE_CACHE.get((artist, album))
     if result is None:
-        result = AsyncResult()
-        GENRE_CACHE[(artist, album)] = result
+        GENRE_CACHE[(artist, album)] = result = AsyncResult()
         result.set(reduce(lambda a, b: a or b, search_variants(artist, album)))
     return result.get()
 
@@ -139,7 +112,7 @@ def wikigenre(track, force=False):
         raise
 
 
-def main(string='', path=None, force=False):
+def main(query='', path=None, force=False):
     with open(join(dirname(__file__), 'wikigenre.log'), 'a') as log:
         handler = logging.StreamHandler()
         filehandler = logging.StreamHandler(log)
@@ -154,8 +127,8 @@ def main(string='', path=None, force=False):
 
         logger.setLevel('DEBUG')
 
-        if string:
-            for artistalbum in string.split('; '):
+        if query:
+            for artistalbum in query.split('; '):
                 parts = artistalbum.split(' - ', 1)
                 try:
                     artist, album = parts
@@ -163,15 +136,15 @@ def main(string='', path=None, force=False):
                     artist, album = '', artistalbum
                 print (artistalbum + ': ' +
                        '; '.join(map(titlecase, albumgenres(artist, album))))
-        else:
+        elif path is not None:
             logger.info('Starting')
             # Escape square brackets
             path = re.sub(r'([\[\]])', r'[\1]', path)
-            pool = Pool(8)
-            for track in iglob(path):
-                pool.spawn(wikigenre, track, force=force)
-            pool.join()
+            joinall([spawn(wikigenre, track, force=force)
+                     for track in iglob(path)])
             logger.info('Finished')
+        else:
+            print 'either query or path required'
 
 
 if __name__ == '__main__':
@@ -179,7 +152,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('path', metavar='PATH', nargs='?')
-    parser.add_argument('--string', metavar='STRING', nargs='?', default='',
+    parser.add_argument('-q', '--query', metavar='QUERY', nargs='?', default='',
                         help='[artist - ]album(; [artist - ]album)*')
     parser.add_argument('-f', '--force', action='store_true')
     namespace = parser.parse_args()
