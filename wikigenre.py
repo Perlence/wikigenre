@@ -1,5 +1,6 @@
 import codecs
 import logging
+import re
 from glob import iglob
 from os.path import join, dirname, normpath
 
@@ -164,6 +165,8 @@ def main(string='', path=None, force=False):
                        '; '.join(map(titlecase, albumgenres(artist, album))))
         else:
             logger.info('Starting')
+            # Escape square brackets
+            path = re.sub(r'([\[\]])', r'[\1]', path)
             pool = Pool(8)
             for track in iglob(path):
                 pool.spawn(wikigenre, track, force=force)
