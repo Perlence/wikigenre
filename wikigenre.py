@@ -167,11 +167,14 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('path', metavar='PATH', nargs='?')
+    parser.add_argument('path', metavar='PATH', nargs='?',
+                        help="path to audio files, can contain wildcards")
     parser.add_argument('-q', '--query',
                         metavar='QUERY', nargs='?', default='',
-                        help='[artist - ]album(; [artist - ]album)*')
-    parser.add_argument('-f', '--force', action='store_true')
+                        help='fetch genres for given albums\n'
+                             '[artist - ]album(; [artist - ]album)*')
+    parser.add_argument('-f', '--force', action='store_true',
+                        help='rewrite genres even if track already has them')
     namespace = parser.parse_args()
     kwargs = dict(namespace._get_kwargs())
 
