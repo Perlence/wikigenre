@@ -1,6 +1,8 @@
-import codecs
+from __future__ import print_function
+
 import logging
 import re
+import sys
 from glob import iglob
 from os.path import join, dirname, normpath
 
@@ -134,8 +136,8 @@ def main(query='', path=None, force=False):
                     artist, album = parts
                 except ValueError:
                     artist, album = '', artistalbum
-                print (artistalbum + ': ' +
-                       '; '.join(map(titlecase, albumgenres(artist, album))))
+                print(artistalbum + ': ' +
+                      '; '.join(map(titlecase, albumgenres(artist, album))))
         elif path is not None:
             logger.info('Starting')
             # Escape square brackets
@@ -144,7 +146,21 @@ def main(query='', path=None, force=False):
                      for track in iglob(path)])
             logger.info('Finished')
         else:
-            print 'either query or path required'
+            # Read data from stdin
+            # Sample input: "The Beatles - [Abbey Road #07] Here Comes the Sun"
+            trackinfo = re.compile(
+                r'(.+) - \[(.+?)(?: CD\d+)?(?: #\d+)?\]')
+            lines = sys.stdin.read()
+            greenlets = []
+            for line in lines.splitlines():
+                mo = trackinfo.match(line)
+                if mo is None:
+                    continue
+                artist, album = mo.groups()
+                greenlets.append(spawn(albumgenres, artist, album))
+            joinall(greenlets)
+            for greenlet in greenlets:
+                print('; '.join(map(titlecase, greenlet.get())))
 
 
 if __name__ == '__main__':
@@ -152,7 +168,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('path', metavar='PATH', nargs='?')
-    parser.add_argument('-q', '--query', metavar='QUERY', nargs='?', default='',
+    parser.add_argument('-q', '--query',
+                        metavar='QUERY', nargs='?', default='',
                         help='[artist - ]album(; [artist - ]album)*')
     parser.add_argument('-f', '--force', action='store_true')
     namespace = parser.parse_args()
