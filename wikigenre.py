@@ -206,10 +206,13 @@ def modes(query, path, force, logger):
             if mo is None:
                 return
             artist, album = mo.groups()
-            genres = yield from albumgenres(artist, album)
-            print('; '.join(map(titlecase, genres)))
+            return (yield from albumgenres(artist, album))
 
-        yield from wait(map(get_genres_for_track, lines.splitlines()))
+        tasks = [async(get_genres_for_track(line))
+                 for line in lines.splitlines()]
+        yield from wait(tasks)
+        for task in tasks:
+            print('; '.join(map(titlecase, task.result())))
 
 
 def parse_args():
