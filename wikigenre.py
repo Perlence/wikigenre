@@ -114,7 +114,23 @@ def wikigenre(track, force=False):
         raise
 
 
-def main(query='', path=None, force=False):
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('path', metavar='PATH', nargs='?',
+                        help="path to audio files, can contain wildcards")
+    parser.add_argument('-q', '--query',
+                        metavar='QUERY', nargs='?', default='',
+                        help='fetch genres for given albums\n'
+                             '[artist - ]album(; [artist - ]album)*')
+    parser.add_argument('-f', '--force', action='store_true',
+                        help='rewrite genres even if track already has them')
+    args = parser.parse_args()
+    query = args.query
+    path = args.path
+    force = args.force
+
     with open(join(dirname(__file__), 'wikigenre.log'), 'a') as log:
         handler = logging.StreamHandler()
         filehandler = logging.StreamHandler(log)
@@ -164,18 +180,4 @@ def main(query='', path=None, force=False):
 
 
 if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('path', metavar='PATH', nargs='?',
-                        help="path to audio files, can contain wildcards")
-    parser.add_argument('-q', '--query',
-                        metavar='QUERY', nargs='?', default='',
-                        help='fetch genres for given albums\n'
-                             '[artist - ]album(; [artist - ]album)*')
-    parser.add_argument('-f', '--force', action='store_true',
-                        help='rewrite genres even if track already has them')
-    namespace = parser.parse_args()
-    kwargs = dict(namespace._get_kwargs())
-
-    main(**kwargs)
+    main()
