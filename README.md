@@ -36,7 +36,7 @@ wikigenre "c:/music/The Beatles/*/*.mp3"
 
 ### Query mode
 
-In query mode you pass the artist and album info in special form:
+In *query mode* you pass the artist and album info in special form:
 
 ```
 [artist - ]album(; [artist - ]album)*
@@ -62,12 +62,11 @@ I use *stdin mode* in conjecture with foobar2000.
 
 * Select the tracks in the playlist.
 * Press <kbd>Ctrl+C</kbd> to copy.
-* Start `wikigenre`.
+* Start `cmd.exe` and execute `wikigenre | clip`,
 * Paste.
 * Press <kbd>Enter</kbd> for a new line.
 * Press <kbd>Ctrl+Z</kbd> for EOF.
-  The program parses artist and album data from each line and proceeds to Wikipedia. After that it prints the genres to `stdout`.
-* Copy genres from terminal.
+  The program parses artist and album data from each line and proceeds to Wikipedia, then it redirects output to `clip`.
 * Switch to foobar2000.
 * Open **Track Properties** with <kbd>Alt+Enter</kbd>.
 * Double click on **Genres** in the column **Name**.
