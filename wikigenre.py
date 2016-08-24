@@ -72,7 +72,12 @@ def albumgenres(artist='', album=''):
     result = GENRE_CACHE.get((artist, album))
     if result is None:
         GENRE_CACHE[(artist, album)] = result = AsyncResult()
-        result.set(reduce(lambda a, b: a or b, search_variants(artist, album)))
+        for genres in search_variants(artist, album):
+            if genres:
+                result.set(genres)
+                break
+        else:
+            result.set([])
     return result.get()
 
 
